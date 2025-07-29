@@ -1,8 +1,29 @@
 import { PrismaClient as OfflinePrismaClient } from "@/prisma/generated/offline";
 import { PrismaClient as OnlinePrismaClient } from "@/prisma/generated/online";
 
-const offlineDb = new OfflinePrismaClient();
-const onlineDb = new OnlinePrismaClient();
+const offlineDb = new OfflinePrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+const onlineDb = new OnlinePrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+
+// Ensure connections
+async function ensureConnections() {
+  try {
+    await Promise.all([
+      offlineDb.$connect(),
+      onlineDb.$connect()
+    ]);
+    console.log("Sync service: Both database clients connected");
+  } catch (error) {
+    console.error("Sync service: Failed to connect database clients:", error);
+    throw new Error("Database connection failed in sync service");
+  }
+}
+
+// Initialize connections
+ensureConnections().catch(console.error);
 
 export interface SyncResult {
   success: boolean;
@@ -51,6 +72,15 @@ export class DataSyncService {
     };
 
     try {
+      // Ensure database connections before starting
+      await ensureConnections();
+      
+      // Test connections
+      await Promise.all([
+        offlineDb.$queryRaw`SELECT 1`,
+        onlineDb.$queryRaw`SELECT 1`
+      ]);
+
       // Sync in order of dependencies to avoid foreign key conflicts
       await this.syncWarehouses(result);
       await this.syncUsers(result);
@@ -69,7 +99,9 @@ export class DataSyncService {
       result.success = result.errors.length === 0;
     } catch (error) {
       result.success = false;
-      result.errors.push(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      result.errors.push(`Sync failed: ${errorMessage}`);
+      console.error("Sync service error:", error);
     } finally {
       this.isSyncing = false;
     }
