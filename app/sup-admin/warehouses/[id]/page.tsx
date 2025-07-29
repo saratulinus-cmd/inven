@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -62,7 +63,12 @@ import {
   Crown,
   Calendar,
   Target,
-  Star
+  Star,
+  Search,
+  Download,
+  Filter,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react"
 import {
   LineChart,
@@ -92,10 +98,99 @@ export default function WarehouseDetailsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("12months")
   const [detailedAnalytics, setDetailedAnalytics] = useState<any>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [productSearch, setProductSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortBy, setSortBy] = useState("name")
+  const [sortOrder, setSortOrder] = useState("asc")
+  const [stockFilter, setStockFilter] = useState("all")
   const wareHouseId = path?.split("/")[3]
+  const productsPerPage = 20
   
-  // Fetch warehouse data using the ID from params
-  const { data: warehouseData, loading, error } = fetchWareHouseData(`/api/warehouse/list`,{id:wareHouseId})
+  // Fetch warehouse data using the ID from params (using offline API for current stock levels)
+  const { data: warehouseData, loading, error } = fetchWareHouseData(`/api/warehouse/offline`,{id:wareHouseId})
+
+  // Filter and paginate products
+  const filteredProducts = useMemo(() => {
+    if (!warehouseData?.products) return [];
+    
+    let filtered = warehouseData.products.filter((product: any) => {
+      // Search filter
+      const matchesSearch = !productSearch || 
+        product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+        product.barcode.toLowerCase().includes(productSearch.toLowerCase()) ||
+        product.description?.toLowerCase().includes(productSearch.toLowerCase());
+      
+      // Stock filter
+      const matchesStock = stockFilter === "all" || 
+        (stockFilter === "low" && product.quantity <= 10 && product.quantity > 0) ||
+        (stockFilter === "out" && product.quantity === 0) ||
+        (stockFilter === "good" && product.quantity > 10);
+      
+      return matchesSearch && matchesStock;
+    });
+
+    // Sort products
+    filtered.sort((a: any, b: any) => {
+      let aValue = a[sortBy];
+      let bValue = b[sortBy];
+      
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    return filtered;
+  }, [warehouseData?.products, productSearch, stockFilter, sortBy, sortOrder]);
+
+  // Paginate filtered products
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * productsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + productsPerPage);
+  }, [filteredProducts, currentPage, productsPerPage]);
+
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+
+  // Export functionality
+  const handleExport = async (reportType: string, format: string = 'csv') => {
+    try {
+      const response = await fetch('/api/reports/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          warehouseId: wareHouseId,
+          reportType,
+          format,
+          filters: { stockStatus: stockFilter !== 'all' ? stockFilter : undefined }
+        })
+      });
+
+      if (format === 'csv') {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reportType}-report-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        const data = await response.json();
+        console.log('Export data:', data);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
+  };
 
   // Fetch detailed analytics
   useEffect(() => {
@@ -520,29 +615,96 @@ export default function WarehouseDetailsPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Product Inventory</CardTitle>
-                  <CardDescription>
-                    All products currently stored in this warehouse
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Product Inventory</CardTitle>
+                      <CardDescription>
+                        All products currently stored in this warehouse ({filteredProducts.length} products)
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleExport('products')}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export CSV
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  {warehouseData.products && warehouseData.products.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Product Name</TableHead>
-                          <TableHead>Barcode</TableHead>
-                          <TableHead>Stock Status</TableHead>
-                          <TableHead>Stock Level</TableHead>
-                          <TableHead>Unit</TableHead>
-                          <TableHead>Cost</TableHead>
-                          <TableHead>Wholesale Price</TableHead>
-                          <TableHead>Retail Price</TableHead>
-                          <TableHead>Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {warehouseData.products.map((product: any) => {
+                  {/* Search and Filter Controls */}
+                  <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                    <div className="flex-1">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                          placeholder="Search products by name, barcode, or description..."
+                          value={productSearch}
+                          onChange={(e) => {
+                            setProductSearch(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Select value={stockFilter} onValueChange={(value) => {
+                        setStockFilter(value);
+                        setCurrentPage(1);
+                      }}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Stock Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Stock</SelectItem>
+                          <SelectItem value="good">In Stock</SelectItem>
+                          <SelectItem value="low">Low Stock</SelectItem>
+                          <SelectItem value="out">Out of Stock</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
+                        const [field, order] = value.split('-');
+                        setSortBy(field);
+                        setSortOrder(order);
+                      }}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Sort By" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="name-asc">Name A-Z</SelectItem>
+                          <SelectItem value="name-desc">Name Z-A</SelectItem>
+                          <SelectItem value="quantity-asc">Stock Low-High</SelectItem>
+                          <SelectItem value="quantity-desc">Stock High-Low</SelectItem>
+                          <SelectItem value="retailPrice-asc">Price Low-High</SelectItem>
+                          <SelectItem value="retailPrice-desc">Price High-Low</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {filteredProducts.length > 0 ? (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Product Name</TableHead>
+                            <TableHead>Barcode</TableHead>
+                            <TableHead>Stock Status</TableHead>
+                            <TableHead>Stock Level</TableHead>
+                            <TableHead>Unit</TableHead>
+                            <TableHead>Cost</TableHead>
+                            <TableHead>Wholesale Price</TableHead>
+                            <TableHead>Retail Price</TableHead>
+                            <TableHead>Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedProducts.map((product: any) => {
                           const stockStatus = getStockStatus(product.quantity)
                           return (
                             <TableRow key={product.id}>
@@ -569,23 +731,99 @@ export default function WarehouseDetailsPage() {
                               <TableCell>{formatCurrency(product.wholeSalePrice)}</TableCell>
                               <TableCell>{formatCurrency(product.retailPrice)}</TableCell>
                               <TableCell>
-                              <Link href={`/sup-admin/warehouses/wh002/${product.id}/stock-tracking`}>
-                                <Activity className="mr-2 h-4 w-4" />
-                                Stock Tracking
+                              <Link href={`/sup-admin/warehouses/${wareHouseId}/${product.id}`}>
+                                <Button variant="ghost" size="sm">
+                                  <Activity className="mr-2 h-4 w-4" />
+                                  View Details
+                                </Button>
                               </Link>
                               </TableCell>
                             </TableRow>
                           )
                         })}
-                      </TableBody>
-                    </Table>
+                        </TableBody>
+                      </Table>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between mt-4">
+                          <div className="text-sm text-muted-foreground">
+                            Showing {((currentPage - 1) * productsPerPage) + 1} to {Math.min(currentPage * productsPerPage, filteredProducts.length)} of {filteredProducts.length} products
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCurrentPage(currentPage - 1)}
+                              disabled={currentPage === 1}
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                              Previous
+                            </Button>
+                            
+                            <div className="flex items-center gap-1">
+                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let pageNum;
+                                if (totalPages <= 5) {
+                                  pageNum = i + 1;
+                                } else if (currentPage <= 3) {
+                                  pageNum = i + 1;
+                                } else if (currentPage >= totalPages - 2) {
+                                  pageNum = totalPages - 4 + i;
+                                } else {
+                                  pageNum = currentPage - 2 + i;
+                                }
+                                
+                                return (
+                                  <Button
+                                    key={pageNum}
+                                    variant={currentPage === pageNum ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setCurrentPage(pageNum)}
+                                    className="w-8 h-8 p-0"
+                                  >
+                                    {pageNum}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCurrentPage(currentPage + 1)}
+                              disabled={currentPage === totalPages}
+                            >
+                              Next
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-8">
                       <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                       <h3 className="text-lg font-medium mb-2">No Products Found</h3>
                       <p className="text-muted-foreground">
-                        This warehouse doesn't have any products yet.
+                        {productSearch || stockFilter !== 'all' 
+                          ? "No products match your current filters. Try adjusting your search or filter criteria."
+                          : "This warehouse doesn't have any products yet."
+                        }
                       </p>
+                      {(productSearch || stockFilter !== 'all') && (
+                        <Button 
+                          variant="outline" 
+                          className="mt-4"
+                          onClick={() => {
+                            setProductSearch("");
+                            setStockFilter("all");
+                            setCurrentPage(1);
+                          }}
+                        >
+                          Clear Filters
+                        </Button>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -595,10 +833,24 @@ export default function WarehouseDetailsPage() {
             <TabsContent value="sales" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Sales</CardTitle>
-                  <CardDescription>
-                    Latest sales transactions from this warehouse
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Recent Sales</CardTitle>
+                      <CardDescription>
+                        Latest sales transactions from this warehouse
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleExport('sales')}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export Sales
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {warehouseData.sale && warehouseData.sale.length > 0 ? (

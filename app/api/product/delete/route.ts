@@ -1,34 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-
 import offlinePrisma from "@/lib/oflinePrisma";
 
+export async function POST(req: NextRequest) {
+  try {
+    const { productId } = await req.json();
 
-
-export async function POST(req:NextRequest){
-    const {productId} = await req.json()
-    try {
-        const product = await offlinePrisma.product.findUnique({
-            where:{
-                id:productId,isDeleted:false
-            }
-        })
-
-        if(!product) return NextResponse.json("product dose not exist",{status:402})
-
-        const deleteProduct = await offlinePrisma.product.update({
-            where:{
-                id:productId
-            },
-            data:{
-                isDeleted:true
-            }
-        })
-
-        return NextResponse.json(deleteProduct,{status:200})
-    } catch (error) {
-        return NextResponse.json(error,{status:500})
-        
-    }finally{
-        await offlinePrisma.$disconnect()
+    if (!productId) {
+      return NextResponse.json({
+        success: false,
+        error: "Product ID is required"
+      }, { status: 400 });
     }
+
+    // Check if product exists
+    const product = await offlinePrisma.product.findUnique({
+      where: { id: productId }
+    });
+
+    if (!product) {
+      return NextResponse.json({
+        success: false,
+        error: "Product not found"
+      }, { status: 404 });
+    }
+
+    // Soft delete the product and mark as unsynced
+    const deletedProduct = await offlinePrisma.product.update({
+      where: { id: productId },
+      data: {
+        isDeleted: true,
+        sync: false, // Mark as unsynced to sync the deletion
+        syncedAt: null,
+        updatedAt: new Date()
+      }
+    });
+
+    console.log(`Product deleted: ${productId} - marked as unsynced for deletion sync`);
+
+    return NextResponse.json({
+      success: true,
+      message: "Product deleted successfully",
+      product: deletedProduct
+    }, { status: 200 });
+
+  } catch (error) {
+    console.error("Product deletion error:", error);
+    return NextResponse.json({
+      success: false,
+      error: "Failed to delete product"
+    }, { status: 500 });
+  } finally {
+    await offlinePrisma.$disconnect();
+  }
 }
