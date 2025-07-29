@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import offlinePrisma from "@/lib/oflinePrisma";
-
+import { markProductAsUnsynced } from "@/lib/sync-helpers";
 
 export async function GET(req:NextRequest){
     const warehouseId = await req.json()
@@ -41,11 +41,13 @@ export async function POST(req:NextRequest){
                 unit,
                 quantity:parseInt(quantity),
                 description,
-                warehousesId:warehouseId
+                warehousesId:warehouseId,
+                sync: false, // New products should be marked as unsynced
+                syncedAt: null
             }
         })
 
-        
+        console.log(`New product created: ${product.id} - marked as unsynced`);
         
         return NextResponse.json(product,{status:201})
     }catch(error){
@@ -56,36 +58,49 @@ export async function POST(req:NextRequest){
     }
 }
 
-// export async function PUT(req:NextRequest){
-//     const {productName:name,productCode:barcode,productDescription:description,productQuantity:quantity,productTaxRate:taxRate,productUnit:unit,wholeSalePrice,retailPrice,costPrice:cost} = await req.json()
-//     try{  
-//         const checkProduct = await offlinePrisma.product.findUnique({where:{barcode}})
-//         if(checkProduct) return NextResponse.json("werehous Product Exist",{status:403})
+// Enable the PUT method for product updates
+export async function PUT(req:NextRequest){
+    const {productId, productName:name, productCode:barcode, productDescription:description, productQuantity:quantity, productTaxRate:taxRate, productUnit:unit, wholeSalePrice, retailPrice, costPrice:cost} = await req.json()
+    
+    try{  
+        // Check if product exists
+        const existingProduct = await offlinePrisma.product.findUnique({
+            where: { id: productId, isDeleted: false }
+        });
+        
+        if (!existingProduct) {
+            return NextResponse.json("Product does not exist", {status: 404});
+        }
 
-//         const productUpdate = await offlinePrisma.product.update({
-//             where:{barcode},
-//             data:{
-//                 name,
-//                 barcode,
-//                 wholeSalePrice:parseFloat(wholeSalePrice),
-//                 retailPrice:parseFloat(retailPrice),
-//                 cost:parseFloat(cost),
-//                 taxRate:parseInt(taxRate),
-//                 unit,
-//                 quantity:parseInt(quantity),
-//                 description,
-//                 // warehousesId:warehouseId
-//             }
-//         })
+        // Update the product
+        const updatedProduct = await offlinePrisma.product.update({
+            where: { id: productId },
+            data: {
+                name,
+                barcode,
+                wholeSalePrice: parseFloat(wholeSalePrice),
+                retailPrice: parseFloat(retailPrice),
+                cost: parseFloat(cost),
+                taxRate: parseInt(taxRate),
+                unit,
+                quantity: parseInt(quantity),
+                description,
+                sync: false, // Mark as unsynced since it was updated
+                syncedAt: null,
+                updatedAt: new Date()
+            }
+        });
+
+        console.log(`Product updated: ${productId} - marked as unsynced`);
         
-//         return NextResponse.json(productUpdate,{status:201})
-//     }catch(error){
-        
-//         return NextResponse.json(error,{status:500})
-//     }finally{
-//         await offlinePrisma.$disconnect()
-//     }
-// }
+        return NextResponse.json(updatedProduct, {status: 200});
+    } catch(error) {
+        console.error("Product update error:", error);
+        return NextResponse.json(error, {status: 500});
+    } finally {
+        await offlinePrisma.$disconnect();
+    }
+}
 
 export async function DELETE(req:NextRequest){
     const {productId} = await req.json()
@@ -103,9 +118,14 @@ export async function DELETE(req:NextRequest){
                 id:productId
             },
             data:{
-                isDeleted:true
+                isDeleted:true,
+                sync: false, // Mark as unsynced to sync the deletion
+                syncedAt: null,
+                updatedAt: new Date()
             }
         })
+
+        console.log(`Product deleted: ${productId} - marked as unsynced for deletion sync`);
 
         return NextResponse.json(deleteProduct,{status:200})
     } catch (error) {
