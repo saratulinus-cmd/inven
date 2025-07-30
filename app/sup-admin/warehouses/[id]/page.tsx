@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -62,7 +63,10 @@ import {
   Crown,
   Calendar,
   Target,
-  Star
+  Star,
+  Search,
+  Download,
+  FileText
 } from "lucide-react"
 import {
   LineChart,
@@ -92,6 +96,11 @@ export default function WarehouseDetailsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("12months")
   const [detailedAnalytics, setDetailedAnalytics] = useState<any>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filteredProducts, setFilteredProducts] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const wareHouseId = path?.split("/")[3]
   
   // Fetch warehouse data using the ID from params
@@ -125,6 +134,110 @@ export default function WarehouseDetailsPage() {
 
     fetchDetailedAnalytics()
   }, [wareHouseId])
+
+  // Clear search results when search term is empty
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredProducts([])
+    }
+  }, [searchTerm])
+
+  // Search products
+  const searchProducts = async () => {
+    if (!wareHouseId || !searchTerm.trim()) {
+      setFilteredProducts([])
+      return
+    }
+
+    try {
+      setIsSearching(true)
+      const response = await fetch('/api/warehouse/products/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          warehouseId: wareHouseId,
+          searchTerm: searchTerm.trim(),
+          limit: 50
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setFilteredProducts(data.products)
+      }
+    } catch (error) {
+      console.error('Error searching products:', error)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  // Export report
+  const exportReport = async (reportType: string) => {
+    if (!wareHouseId) return
+
+    try {
+      const response = await fetch('/api/warehouse/reports/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          warehouseId: wareHouseId,
+          reportType,
+          month: selectedMonth,
+          year: selectedYear
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Create and download CSV file
+        const blob = new Blob([data.csvData], { type: 'text/csv' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = data.filename
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
+    } catch (error) {
+      console.error('Error exporting report:', error)
+    }
+  }
+
+  // Generate monthly report
+  const generateMonthlyReport = async () => {
+    if (!wareHouseId) return
+
+    try {
+      const response = await fetch('/api/warehouse/reports/monthly', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          warehouseId: wareHouseId,
+          month: selectedMonth,
+          year: selectedYear,
+          reportType: 'all'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Handle the report data as needed
+        console.log('Monthly report generated:', data)
+      }
+    } catch (error) {
+      console.error('Error generating monthly report:', error)
+    }
+  }
 
   // Loading state
   if (loading) {
@@ -486,6 +599,34 @@ export default function WarehouseDetailsPage() {
             </TabsContent>
 
             <TabsContent value="products" className="space-y-4">
+              {/* Search Products */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Search Products</CardTitle>
+                  <CardDescription>
+                    Search for products by name, barcode, or description
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Search products..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && searchProducts()}
+                      className="flex-1"
+                    />
+                    <Button onClick={searchProducts} disabled={isSearching}>
+                      {isSearching ? (
+                        <Activity className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Stock Overview Cards */}
               <div className="grid gap-4 md:grid-cols-3">
                 <Card>
@@ -526,7 +667,8 @@ export default function WarehouseDetailsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {warehouseData.products && warehouseData.products.length > 0 ? (
+                  {(filteredProducts.length > 0 ? filteredProducts : warehouseData.products) && 
+                   (filteredProducts.length > 0 ? filteredProducts : warehouseData.products).length > 0 ? (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -542,7 +684,7 @@ export default function WarehouseDetailsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {warehouseData.products.map((product: any) => {
+                        {(filteredProducts.length > 0 ? filteredProducts : warehouseData.products).map((product: any) => {
                           const stockStatus = getStockStatus(product.quantity)
                           return (
                             <TableRow key={product.id}>
@@ -569,10 +711,20 @@ export default function WarehouseDetailsPage() {
                               <TableCell>{formatCurrency(product.wholeSalePrice)}</TableCell>
                               <TableCell>{formatCurrency(product.retailPrice)}</TableCell>
                               <TableCell>
-                              <Link href={`/sup-admin/warehouses/wh002/${product.id}/stock-tracking`}>
-                                <Activity className="mr-2 h-4 w-4" />
-                                Stock Tracking
-                              </Link>
+                                <div className="flex gap-2">
+                                  <Link href={`/sup-admin/warehouses/${wareHouseId}/${product.id}`}>
+                                    <Button variant="outline" size="sm" className="gap-1">
+                                      <Eye className="h-3 w-3" />
+                                      View Details
+                                    </Button>
+                                  </Link>
+                                  <Link href={`/sup-admin/warehouses/wh002/${product.id}/stock-tracking`}>
+                                    <Button variant="outline" size="sm" className="gap-1">
+                                      <Activity className="h-3 w-3" />
+                                      Stock Tracking
+                                    </Button>
+                                  </Link>
+                                </div>
                               </TableCell>
                             </TableRow>
                           )
@@ -814,6 +966,50 @@ export default function WarehouseDetailsPage() {
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-4">
+              {/* Report Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Report Configuration</CardTitle>
+                  <CardDescription>
+                    Configure the period for your reports
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="month">Month</Label>
+                      <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                            <SelectItem key={month} value={month.toString()}>
+                              {new Date(2024, month - 1).toLocaleDateString('en-US', { month: 'long' })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="year">Year</Label>
+                      <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardHeader>
@@ -847,24 +1043,43 @@ export default function WarehouseDetailsPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Quick Actions</CardTitle>
+                    <CardTitle>Export Reports</CardTitle>
+                    <CardDescription>
+                      Generate and download various reports
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start">
-                      <Calendar className="mr-2 h-4 w-4" />
-                      Generate Monthly Report
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={() => exportReport('monthly')}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export Monthly Report
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={() => exportReport('inventory')}
+                    >
                       <Package className="mr-2 h-4 w-4" />
-                      Export Inventory
+                      Export Inventory Report
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={() => exportReport('sales')}
+                    >
                       <ShoppingCart className="mr-2 h-4 w-4" />
-                      Export Sales Data
+                      Export Sales Report
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
-                      <Users className="mr-2 h-4 w-4" />
-                      User Activity Report
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={generateMonthlyReport}
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      Generate Monthly Analytics
                     </Button>
                   </CardContent>
                 </Card>
