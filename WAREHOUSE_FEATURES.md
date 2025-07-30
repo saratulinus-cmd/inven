@@ -94,13 +94,24 @@ Content-Type: application/json
 
 ## Database Integration
 
-All features work with the online database using the `onlinePrisma` client. The system supports:
+All features work with the online database using the `onlinePrisma` client with the correct online schema. The system supports:
 
-- **Warehouses**: Full warehouse information and statistics
-- **Products**: Complete product details with pricing and stock levels
-- **Sales**: Sales transactions with customer information
-- **Purchases**: Purchase transactions with supplier information
-- **Users**: Warehouse staff and permissions
+- **Warehouses_online**: Full warehouse information and statistics
+- **Product_online**: Complete product details with pricing and stock levels
+- **Sale_online**: Sales transactions with customer information
+- **Purchase_online**: Purchase transactions with supplier information
+- **SaleItem_online**: Individual sale items with product relationships
+- **PurchaseItem_online**: Individual purchase items with product relationships
+- **Customer_online**: Customer information and relationships
+- **Supplier_online**: Supplier information and relationships
+- **Users_online**: Warehouse staff and permissions
+
+### Key Schema Relationships:
+- Products are linked to warehouses via `warehouses_onlineId`
+- Sale items are linked to products via `product_onlineId`
+- Sale items are linked to sales via `sale_onlineId`
+- Purchase items are linked to products via `product_onlineId`
+- Purchase items are linked to purchases via `purchase_onlineId`
 
 ## Usage Instructions
 

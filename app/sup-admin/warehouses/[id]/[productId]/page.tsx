@@ -439,13 +439,13 @@ export default function ProductDetailsPage() {
                         {salesHistory.map((item: any) => (
                           <TableRow key={item.id}>
                             <TableCell>
-                              {new Date(item.sale.createdAt).toLocaleDateString()}
+                              {new Date(item.Sale_online.createdAt).toLocaleDateString()}
                             </TableCell>
-                            <TableCell className="font-medium">{item.sale.invoiceNo}</TableCell>
-                            <TableCell>{item.sale.selectedCustomer?.name || 'Walk-in Customer'}</TableCell>
+                            <TableCell className="font-medium">{item.Sale_online.invoiceNo}</TableCell>
+                            <TableCell>{item.Sale_online.Customer_online?.name || 'Walk-in Customer'}</TableCell>
                             <TableCell>{item.quantity} {product.unit}</TableCell>
-                            <TableCell>{formatCurrency(item.price)}</TableCell>
-                            <TableCell>{formatCurrency(item.quantity * item.price)}</TableCell>
+                            <TableCell>{formatCurrency(item.selectedPrice)}</TableCell>
+                            <TableCell>{formatCurrency(item.quantity * item.selectedPrice)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -488,10 +488,10 @@ export default function ProductDetailsPage() {
                         {purchaseHistory.map((item: any) => (
                           <TableRow key={item.id}>
                             <TableCell>
-                              {new Date(item.purchase.createdAt).toLocaleDateString()}
+                              {new Date(item.Purchase_online.createdAt).toLocaleDateString()}
                             </TableCell>
-                            <TableCell className="font-medium">{item.purchase.purchaseNo}</TableCell>
-                            <TableCell>{item.purchase.selectedSupplier?.name || 'Unknown Supplier'}</TableCell>
+                            <TableCell className="font-medium">{item.Purchase_online.referenceNo}</TableCell>
+                            <TableCell>{item.Purchase_online.Supplier_online?.name || 'Unknown Supplier'}</TableCell>
                             <TableCell>{item.quantity} {product.unit}</TableCell>
                             <TableCell>{formatCurrency(item.cost)}</TableCell>
                             <TableCell>{formatCurrency(item.quantity * item.cost)}</TableCell>

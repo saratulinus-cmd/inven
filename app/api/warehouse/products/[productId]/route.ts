@@ -34,10 +34,10 @@ export async function GET(
     }
 
     // Get product details
-    const product = await onlinePrisma.products_online.findFirst({
+    const product = await onlinePrisma.product_online.findFirst({
       where: {
         id: params.productId,
-        warehousesId: warehouse.warehouseCode,
+        warehouses_onlineId: warehouse.warehouseCode,
         isDeleted: false
       }
     });
@@ -50,23 +50,23 @@ export async function GET(
     }
 
     // Get sales history for this product
-    const salesHistory = await onlinePrisma.saleItems_online.findMany({
+    const salesHistory = await onlinePrisma.saleItem_online.findMany({
       where: {
-        productId: params.productId,
-        sale: {
-          warehousesId: warehouse.warehouseCode,
+        product_onlineId: params.productId,
+        Sale_online: {
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false
         }
       },
       include: {
-        sale: {
+        Sale_online: {
           include: {
-            selectedCustomer: true
+            Customer_online: true
           }
         }
       },
       orderBy: {
-        sale: {
+        Sale_online: {
           createdAt: 'desc'
         }
       },
@@ -74,23 +74,23 @@ export async function GET(
     });
 
     // Get purchase history for this product
-    const purchaseHistory = await onlinePrisma.purchaseItems_online.findMany({
+    const purchaseHistory = await onlinePrisma.purchaseItem_online.findMany({
       where: {
-        productId: params.productId,
-        purchase: {
-          warehousesId: warehouse.warehouseCode,
+        product_onlineId: params.productId,
+        Purchase_online: {
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false
         }
       },
       include: {
-        purchase: {
+        Purchase_online: {
           include: {
-            selectedSupplier: true
+            Supplier_online: true
           }
         }
       },
       orderBy: {
-        purchase: {
+        Purchase_online: {
           createdAt: 'desc'
         }
       },
@@ -100,17 +100,17 @@ export async function GET(
     // Calculate statistics
     const totalSold = salesHistory.reduce((sum, item) => sum + (item.quantity || 0), 0);
     const totalPurchased = purchaseHistory.reduce((sum, item) => sum + (item.quantity || 0), 0);
-    const totalRevenue = salesHistory.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
+    const totalRevenue = salesHistory.reduce((sum, item) => sum + ((item.quantity || 0) * (item.selectedPrice || 0)), 0);
     const totalCost = purchaseHistory.reduce((sum, item) => sum + ((item.quantity || 0) * (item.cost || 0)), 0);
     const profit = totalRevenue - totalCost;
 
     // Get monthly sales data for the last 12 months
-    const monthlySales = await onlinePrisma.saleItems_online.groupBy({
-      by: ['sale'],
+    const monthlySales = await onlinePrisma.saleItem_online.groupBy({
+      by: ['Sale_online'],
       where: {
-        productId: params.productId,
-        sale: {
-          warehousesId: warehouse.warehouseCode,
+        product_onlineId: params.productId,
+        Sale_online: {
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false,
           createdAt: {
             gte: new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1)
@@ -119,14 +119,14 @@ export async function GET(
       },
       _sum: {
         quantity: true,
-        price: true
+        selectedPrice: true
       }
     });
 
     const monthlyData = monthlySales.map(item => ({
-      month: item.sale.createdAt,
+      month: item.Sale_online.createdAt,
       quantity: item._sum.quantity || 0,
-      revenue: (item._sum.quantity || 0) * (item._sum.price || 0)
+      revenue: (item._sum.quantity || 0) * (item._sum.selectedPrice || 0)
     }));
 
     const response = {

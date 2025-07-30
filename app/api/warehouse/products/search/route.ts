@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // Build search query
     const whereClause: any = {
-      warehousesId: warehouse.warehouseCode,
+      warehouses_onlineId: warehouse.warehouseCode,
       isDeleted: false
     };
 
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       ];
     }
 
-    const products = await onlinePrisma.products_online.findMany({
+    const products = await onlinePrisma.product_online.findMany({
       where: whereClause,
       take: parseInt(limit),
       orderBy: {

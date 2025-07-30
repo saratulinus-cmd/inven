@@ -48,9 +48,9 @@ export async function POST(req: NextRequest) {
 
     // Get inventory data
     if (reportType === 'all' || reportType === 'inventory') {
-      const products = await onlinePrisma.products_online.findMany({
+      const products = await onlinePrisma.product_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false
         },
         orderBy: {
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     if (reportType === 'all' || reportType === 'sales') {
       const sales = await onlinePrisma.sale_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false,
           createdAt: {
             gte: startDate,
@@ -94,10 +94,10 @@ export async function POST(req: NextRequest) {
         include: {
           saleItems: {
             include: {
-              product: true
+              Product_online: true
             }
           },
-          selectedCustomer: true
+          Customer_online: true
         },
         orderBy: {
           createdAt: 'desc'
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       const dailySales = await onlinePrisma.sale_online.groupBy({
         by: ['createdAt'],
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false,
           createdAt: {
             gte: startDate,
@@ -155,11 +155,11 @@ export async function POST(req: NextRequest) {
 
     // Get top selling products
     if (reportType === 'all' || reportType === 'sales') {
-      const topProducts = await onlinePrisma.saleItems_online.groupBy({
-        by: ['productId'],
+      const topProducts = await onlinePrisma.saleItem_online.groupBy({
+        by: ['product_onlineId'],
         where: {
-          sale: {
-            warehousesId: warehouse.warehouseCode,
+          Sale_online: {
+            warehouses_onlineId: warehouse.warehouseCode,
             isDeleted: false,
             createdAt: {
               gte: startDate,
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
         },
         _sum: {
           quantity: true,
-          price: true
+          selectedPrice: true
         },
         orderBy: {
           _sum: {
@@ -181,14 +181,14 @@ export async function POST(req: NextRequest) {
 
       const topProductsWithDetails = await Promise.all(
         topProducts.map(async (item) => {
-          const product = await onlinePrisma.products_online.findUnique({
-            where: { id: item.productId }
+          const product = await onlinePrisma.product_online.findUnique({
+            where: { id: item.product_onlineId }
           });
           return {
-            productId: item.productId,
+            productId: item.product_onlineId,
             productName: product?.name || 'Unknown Product',
             quantity: item._sum.quantity || 0,
-            revenue: (item._sum.quantity || 0) * (item._sum.price || 0)
+            revenue: (item._sum.quantity || 0) * (item._sum.selectedPrice || 0)
           };
         })
       );

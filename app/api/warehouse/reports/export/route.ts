@@ -33,9 +33,9 @@ export async function POST(req: NextRequest) {
     let filename = '';
 
     if (reportType === 'inventory') {
-      const products = await onlinePrisma.products_online.findMany({
+      const products = await onlinePrisma.product_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false
         },
         orderBy: {
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
       const sales = await onlinePrisma.sale_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false,
           createdAt: {
             gte: startDate,
@@ -80,10 +80,10 @@ export async function POST(req: NextRequest) {
         include: {
           saleItems: {
             include: {
-              product: true
+              Product_online: true
             }
           },
-          selectedCustomer: true
+          Customer_online: true
         },
         orderBy: {
           createdAt: 'desc'
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       sales.forEach(sale => {
         const status = sale.balance === 0 ? 'Paid' : sale.balance === sale.grandTotal ? 'Unpaid' : 'Partial';
         const date = new Date(sale.createdAt).toLocaleDateString();
-        const customer = sale.selectedCustomer?.name || 'Walk-in Customer';
+        const customer = sale.Customer_online?.name || 'Walk-in Customer';
         
         csvData += `"${sale.invoiceNo}","${date}","${customer}",${sale.saleItems.length},${sale.grandTotal},${sale.balance},"${status}"\n`;
       });
@@ -117,9 +117,9 @@ export async function POST(req: NextRequest) {
       const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
 
       // Get inventory data
-      const products = await onlinePrisma.products_online.findMany({
+      const products = await onlinePrisma.product_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false
         },
         orderBy: {
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       // Get sales data
       const sales = await onlinePrisma.sale_online.findMany({
         where: {
-          warehousesId: warehouse.warehouseCode,
+          warehouses_onlineId: warehouse.warehouseCode,
           isDeleted: false,
           createdAt: {
             gte: startDate,
@@ -140,10 +140,10 @@ export async function POST(req: NextRequest) {
         include: {
           saleItems: {
             include: {
-              product: true
+              Product_online: true
             }
           },
-          selectedCustomer: true
+          Customer_online: true
         },
         orderBy: {
           createdAt: 'desc'
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
       sales.forEach(sale => {
         const status = sale.balance === 0 ? 'Paid' : sale.balance === sale.grandTotal ? 'Unpaid' : 'Partial';
         const date = new Date(sale.createdAt).toLocaleDateString();
-        const customer = sale.selectedCustomer?.name || 'Walk-in Customer';
+        const customer = sale.Customer_online?.name || 'Walk-in Customer';
         
         csvData += `"${sale.invoiceNo}","${date}","${customer}",${sale.saleItems.length},${sale.grandTotal},${sale.balance},"${status}"\n`;
       });
