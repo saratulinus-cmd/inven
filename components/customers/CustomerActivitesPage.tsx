@@ -48,7 +48,9 @@ import {
 } from "@/components/ui/dialog"
 import { BalancePaymentDialog } from "@/components/balance-payment-dialog"
 import { BalanceDepositDialog } from "@/components/balance-deposit-dialog"
-import { Wallet, Plus as PlusIcon } from "lucide-react"
+import { Wallet, Plus as PlusIcon, Settings, Save } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface CustomerActivity {
   id: string
@@ -102,6 +104,7 @@ interface ActivityData {
     totalPaid: number
     totalBalance: number
     customerAccount:number
+    accountLimit?: number
   }
 }
 
@@ -125,6 +128,9 @@ export default function CustomerActivitiesPage() {
 const [balanceTransactions, setBalanceTransactions] = useState([])
 const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
   const [endPoint, setEndPoint] = useState("")
+  const [accountLimitDialogOpen, setAccountLimitDialogOpen] = useState(false)
+  const [accountLimit, setAccountLimit] = useState<number>(0)
+  const [tempAccountLimit, setTempAccountLimit] = useState<string>("")
 
   useEffect(() => {
     setEndPoint(`/warehouse/${warehouseId}/${session?.user?.role}`)
@@ -138,6 +144,7 @@ const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
       }
       const activityData = await response.json()
       setData(activityData)
+      setAccountLimit(activityData.summary.accountLimit || 0)
     } catch (error) {
       console.error('Error fetching activities:', error)
     } finally {
@@ -192,6 +199,36 @@ const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
     fetchActivities()
     fetchBalancePayments()
     fetchCustomerBalance()
+  }
+
+  const handleAccountLimitUpdate = async () => {
+    try {
+      const limitValue = parseFloat(tempAccountLimit)
+      if (isNaN(limitValue) || limitValue < 0) {
+        alert("Please enter a valid positive number for the account limit")
+        return
+      }
+
+      const response = await fetch(`/api/customer/${customerId}/account-limit`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ accountLimit: limitValue }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update account limit')
+      }
+
+      setAccountLimit(limitValue)
+      setAccountLimitDialogOpen(false)
+      setTempAccountLimit("")
+      fetchActivities() // Refresh data
+    } catch (error) {
+      console.error('Error updating account limit:', error)
+      alert("Failed to update account limit")
+    }
   }
 
  
@@ -439,20 +476,33 @@ const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
           Customer Information
         </CardTitle>
       </div>
-      <Button
-        onClick={() => setBalanceDepositDialogOpen(true)}
-        size="sm"
-        className="bg-green-600 hover:bg-green-700"
-      >
-        <PlusIcon className="h-4 w-4 mr-2" />
-        Add Balance
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={() => {
+            setTempAccountLimit(accountLimit.toString())
+            setAccountLimitDialogOpen(true)
+          }}
+          size="sm"
+          variant="outline"
+        >
+          <Settings className="h-4 w-4 mr-2" />
+          Set Limit
+        </Button>
+        <Button
+          onClick={() => setBalanceDepositDialogOpen(true)}
+          size="sm"
+          className="bg-green-600 hover:bg-green-700"
+        >
+          <PlusIcon className="h-4 w-4 mr-2" />
+          Add Balance
+        </Button>
+      </div>
     </div>
   </CardHeader>
   <CardContent>
     {/* Account Balance Section */}
     <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Wallet className="h-5 w-5 text-green-600" />
           <span className="font-medium text-gray-700">Account Balance</span>
@@ -462,6 +512,22 @@ const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
             {formatCurrency(customerBalance)}
           </div>
           <div className="text-xs text-gray-500">Available Credit</div>
+        </div>
+      </div>
+      
+      {/* Account Limit Display */}
+      <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+        <div className="flex items-center gap-2">
+          <Settings className="h-4 w-4 text-blue-600" />
+          <span className="font-medium text-gray-700">Account Limit</span>
+        </div>
+        <div className="text-right">
+          <div className="text-lg font-bold text-blue-700">
+            {formatCurrency(accountLimit)}
+          </div>
+          <div className="text-xs text-gray-500">
+            Available: {formatCurrency(Math.max(0, accountLimit - Math.abs(customerBalance)))}
+          </div>
         </div>
       </div>
     </div>
@@ -922,6 +988,54 @@ const [balanceDepositDialogOpen, setBalanceDepositDialogOpen] = useState(false)
   warehouseId={warehouseId}
   onDepositSuccess={handleBalanceDepositSuccess}
 />
+
+{/* Account Limit Dialog */}
+<Dialog open={accountLimitDialogOpen} onOpenChange={setAccountLimitDialogOpen}>
+  <DialogContent className="sm:max-w-[425px]">
+    <DialogHeader>
+      <DialogTitle>Set Account Limit</DialogTitle>
+      <DialogDescription>
+        Set the maximum credit limit for {data?.customer?.name || "this customer"}
+      </DialogDescription>
+    </DialogHeader>
+    <div className="grid gap-4 py-4">
+      <div className="grid grid-cols-4 items-center gap-4">
+        <Label htmlFor="account-limit" className="text-right">
+          Limit Amount
+        </Label>
+        <Input
+          id="account-limit"
+          type="number"
+          step="0.01"
+          min="0"
+          value={tempAccountLimit}
+          onChange={(e) => setTempAccountLimit(e.target.value)}
+          className="col-span-3"
+          placeholder="Enter account limit"
+        />
+      </div>
+      <div className="text-sm text-gray-600">
+        <p>Current limit: {formatCurrency(accountLimit)}</p>
+        <p>Current balance: {formatCurrency(customerBalance)}</p>
+      </div>
+    </div>
+    <div className="flex justify-end gap-2">
+      <Button
+        variant="outline"
+        onClick={() => {
+          setAccountLimitDialogOpen(false)
+          setTempAccountLimit("")
+        }}
+      >
+        Cancel
+      </Button>
+      <Button onClick={handleAccountLimitUpdate}>
+        <Save className="h-4 w-4 mr-2" />
+        Save Limit
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
       
      </>
   )
